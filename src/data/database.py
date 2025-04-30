@@ -9,7 +9,6 @@ engine = create_engine(Config.DATABASE_URL, echo=True)
 # Oturum yöneticisi oluştur
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-
 # Declarative base sınıfı
 Base = declarative_base()
 
