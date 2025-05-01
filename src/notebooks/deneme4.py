@@ -14,7 +14,10 @@ from core.config import Config
 from imblearn.over_sampling import SMOTE
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix, classification_report
-from imblearn.combine import SMOTETomek, SMOTEENN
+from imblearn.combine import SMOTETomek
+from tensorflow.keras.layers import Dropout
+from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_auc_score
 import random
 import tensorflow as tf
 
@@ -81,8 +84,14 @@ agg = agg.merge(avg_order_gap, on='customer_id', how='left')
 # Son olarak date kolonunu at
 agg.drop(columns=['last_order_date'], inplace=True)
 
+agg['orders_per_month'] = agg['order_count'] / (agg['customer_lifetime'] / 30)
+agg['spend_per_day'] = agg['total_spend'] / agg['customer_lifetime']
 
-X = agg[['total_spend', 'order_count', 'avg_order_size', 'customer_lifetime', 'avg_days_between_orders']]
+
+X = agg[['total_spend', 'order_count', 'avg_order_size',
+         'customer_lifetime', 'avg_days_between_orders',
+         'orders_per_month', 'spend_per_day']]
+
 y = agg['label']
 
 #  Verimiz scale edelim
@@ -91,38 +100,7 @@ X_scaled = scaler.fit_transform(X)
 
 joblib.dump(scaler, Config.PROJECT_ROOT / 'src/models/order_habit/preprocessor.pkl')  # preprocessoru kaydet
 
-
-from sklearn.model_selection import train_test_split
-
-# 1. Azınlık ve çoğunluk sınıflarını ayır
-X_minority = X_scaled[y == 0]
-X_majority = X_scaled[y == 1]
-y_minority = y[y == 0]
-y_majority = y[y == 1]
-
-# 2. Test setine azınlık sınıfından sabit sayıda ayır (örn: 5)
-test_size_min = 5
-X_test_min = X_minority[:test_size_min]
-y_test_min = y_minority[:test_size_min]
-
-# 3. Geri kalan azınlık verisini train'e bırak
-X_train_min = X_minority[test_size_min:]
-y_train_min = y_minority[test_size_min:]
-
-# 4. Çoğunluk sınıfı için split (örneğin %80/20)
-X_train_maj, X_test_maj, y_train_maj, y_test_maj = train_test_split(
-    X_majority, y_majority, test_size=0.2, random_state=42
-)
-
-# 5. Train ve test kümelerini birleştir
-X_train = np.vstack([X_train_min, X_train_maj])
-y_train = pd.concat([y_train_min, y_train_maj])
-
-X_test = np.vstack([X_test_min, X_test_maj])
-y_test = pd.concat([y_test_min, y_test_maj])
-
-
-# X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, stratify=y, test_size=0.3, random_state=SEED)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, stratify=y, test_size=0.3, random_state=SEED)
 
 # SMOTE parametrelerini özelleştirme
 smote = SMOTE(k_neighbors=1, sampling_strategy=0.5, random_state=SEED)
@@ -138,7 +116,10 @@ weights = dict(zip(np.unique(y_train), class_weights))
 
 #  Model Eğitimi
 model = Sequential([
-    Dense(32, activation='relu', input_shape=(X_train.shape[1],)),
+    Dense(64, activation='relu', input_shape=(X_train.shape[1],)),
+    Dropout(0.3),
+    Dense(32, activation='relu'),
+    Dropout(0.2),
     Dense(16, activation='relu'),
     Dense(1, activation='sigmoid')
 ])
@@ -161,8 +142,18 @@ plt.show()
 
 
 # Test veri kümesi üzerinden tahmin yap
+
+
 y_pred = model.predict(X_test)
-y_pred_labels = (y_pred > 0.5).astype(int)
+
+fpr, tpr, thresholds = roc_curve(y_test, y_pred)
+optimal_idx = np.argmax(tpr - fpr)
+optimal_threshold = thresholds[optimal_idx]
+
+y_pred_labels = (y_pred > optimal_threshold).astype(int)
+
+auc_score = roc_auc_score(y_test, y_pred)
+print(f"AUC Score: {auc_score:.4f}")
 
 # Confusion matrix
 cm = confusion_matrix(y_test, y_pred_labels)
@@ -177,3 +168,4 @@ plt.show()
 
 # Detaylı skorlar
 print(classification_report(y_test, y_pred_labels))
+
