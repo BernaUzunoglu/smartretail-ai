@@ -1,23 +1,23 @@
 # Gerekli kütüphaneler
-import joblib
-import random
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import tensorflow as tf
-import matplotlib.pyplot as plt
-from core.config import Config
-from imblearn.combine import SMOTETomek
-from imblearn.over_sampling import SMOTE
-from tensorflow.keras.models import Sequential
-from sklearn.preprocessing import StandardScaler
-from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
+from datetime import datetime
 from sklearn.model_selection import train_test_split
-from sklearn.utils.class_weight import compute_class_weight
+from sklearn.preprocessing import StandardScaler
+import joblib
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+import matplotlib.pyplot as plt
+import seaborn as sns
 from data.fetch_customer_order_summary import get_customer_order_data
+from core.config import Config
+from imblearn.over_sampling import SMOTE
+from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix, classification_report, roc_curve, roc_auc_score
-
+from imblearn.combine import SMOTETomek
+import random
+import tensorflow as tf
 
 # Sabit tohum
 SEED = 42
@@ -67,20 +67,29 @@ agg = df.groupby('customer_id').agg(
     last_order_date=('order_date', 'max'),
     customer_lifetime=('customer_lifetime', 'max')
 ).reset_index()
-
 agg['avg_order_size'] = agg['total_spend'] / agg['order_count']
 cutoff_date = agg['last_order_date'].max() - pd.DateOffset(months=6)
 agg['label'] = (agg['last_order_date'] > cutoff_date).astype(int)
 agg = agg.merge(avg_order_gap, on='customer_id', how='left')
 agg.drop(columns=['last_order_date'], inplace=True)
 agg['orders_per_month'] = agg['order_count'] / (agg['customer_lifetime'] / 30)
-agg['spend_per_day'] = agg['total_spend'] / agg['customer_lifetime']
+# agg['spend_per_day'] = agg['total_spend'] / agg['customer_lifetime']
+
+# 🔁 Yeni temporal feature'lar
+# 1. En sık sipariş verilen ay
+most_common_month = df.groupby('customer_id')['order_month'].agg(lambda x: x.mode()[0]).reset_index()
+most_common_month.columns = ['customer_id', 'common_order_month']
+agg = agg.merge(most_common_month, on='customer_id', how='left')
+
+# 3. Mevsim One-Hot Encoding
+season_encoded = pd.get_dummies(df[['customer_id', 'order_season']], columns=['order_season'])
+season_agg = season_encoded.groupby('customer_id').sum().reset_index()
+agg = agg.merge(season_agg, on='customer_id', how='left')
 
 # Özellikler ve hedef
-X = agg[['total_spend', 'order_count', 'avg_order_size',
-         'customer_lifetime', 'avg_days_between_orders',
-         'orders_per_month', 'spend_per_day']]
+X = agg.drop(columns=['customer_id', 'label', 'order_season_Winter', 'total_spend'])
 y = agg['label']
+
 
 # Standardizasyon
 scaler = StandardScaler()
@@ -88,36 +97,9 @@ X_scaled = scaler.fit_transform(X)
 joblib.dump(scaler, Config.PROJECT_ROOT / 'src/models/order_habit/preprocessor.pkl')
 
 # Train-test bölme
-# X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, stratify=y, test_size=0.3, random_state=SEED)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, stratify=y, test_size=0.3, random_state=SEED)
 
 # Train/test split – Test setinde daha fazla label=0 olacak şekilde manuel ayır
-
-# 1. Azınlık ve çoğunluk sınıflarını ayır
-X_minority = X_scaled[y == 0]
-X_majority = X_scaled[y == 1]
-y_minority = y[y == 0]
-y_majority = y[y == 1]
-
-# 2. Test setine azınlık sınıfından sabit sayıda ayır (örnek: 5)
-test_size_min = min(2, len(X_minority))  # Güvenli olması için
-X_test_min = X_minority[:test_size_min]
-y_test_min = y_minority[:test_size_min]
-
-# 3. Geri kalan azınlık verisini train'e bırak
-X_train_min = X_minority[test_size_min:]
-y_train_min = y_minority[test_size_min:]
-
-# 4. Çoğunluk sınıfı için klasik split (%70 train, %30 test)
-X_train_maj, X_test_maj, y_train_maj, y_test_maj = train_test_split(
-    X_majority, y_majority, test_size=0.3, random_state=SEED
-)
-
-# 5. Train ve test kümelerini birleştir
-X_train = np.vstack([X_train_min, X_train_maj])
-y_train = pd.concat([y_train_min, y_train_maj])
-
-X_test = np.vstack([X_test_min, X_test_maj])
-y_test = pd.concat([y_test_min, y_test_maj])
 
 # Class weight
 class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_train), y=y_train)
@@ -126,11 +108,14 @@ weights = dict(zip(np.unique(y_train), class_weights))
 # SMOTE + Tomek Links
 smote = SMOTE(k_neighbors=1, sampling_strategy=0.75, random_state=SEED)
 smt = SMOTETomek(smote=smote, random_state=SEED)
+
+
 X_resampled, y_resampled = smt.fit_resample(X_train, y_train)
+
 
 # Model tanımı (Dropout'lu)
 model = Sequential([
-    Dense(64, activation='relu', input_shape=(X_train.shape[1],)),
+    Dense(64, activation='relu', input_shape=(X_resampled.shape[1],)),
     Dropout(0.3),
     Dense(32, activation='relu'),
     Dropout(0.2),
@@ -145,7 +130,7 @@ early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=
 
 # Model eğitimi
 history = model.fit(
-    X_train, y_train,
+    X_resampled, y_resampled,
     validation_data=(X_test, y_test),
     class_weight=weights,
     epochs=50,
@@ -175,6 +160,29 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
+
+# Fazladan 10 adet 0 sınıfı test setine manuel olarak ekleniyor
+additional_zeros_for_test = 10
+X_extra_zeros = X_train_min[:additional_zeros_for_test]  # Daha önce train için ayrılmış azınlık veriden
+y_extra_zeros = y_train_min[:additional_zeros_for_test]
+
+# Extended test set oluştur
+X_test_ext = np.vstack([X_test, X_extra_zeros])
+y_test_ext = pd.concat([y_test, y_extra_zeros])
+
+# Tahmin yap
+y_pred_ext = model.predict(X_test_ext)
+fpr_ext, tpr_ext, thresholds_ext = roc_curve(y_test_ext, y_pred_ext)
+optimal_idx_ext = np.argmax(tpr_ext - fpr_ext)
+optimal_threshold_ext = thresholds_ext[optimal_idx_ext]
+y_pred_labels_ext = (y_pred_ext > optimal_threshold_ext).astype(int)
+
+# Performans değerlendirmesi
+print(f"Extended Test AUC: {roc_auc_score(y_test_ext, y_pred_ext):.4f}")
+print(confusion_matrix(y_test_ext, y_pred_labels_ext))
+print(classification_report(y_test_ext, y_pred_labels_ext))
+
+
 # Tahmin ve ROC/AUC
 y_pred = model.predict(X_test)
 fpr, tpr, thresholds = roc_curve(y_test, y_pred)
@@ -199,6 +207,7 @@ print(classification_report(y_test, y_pred_labels))
 
 
 from sklearn.metrics import roc_auc_score
+import copy
 
 baseline_auc = roc_auc_score(y_test, model.predict(X_test))
 

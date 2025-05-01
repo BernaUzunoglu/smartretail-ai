@@ -87,7 +87,7 @@ season_agg = season_encoded.groupby('customer_id').sum().reset_index()
 agg = agg.merge(season_agg, on='customer_id', how='left')
 
 # Özellikler ve hedef
-X = agg.drop(columns=['customer_id', 'label', 'order_season_Winter', 'total_spend', 'order_season_Summer'])
+X = agg.drop(columns=['customer_id', 'label', 'order_season_Winter', 'total_spend'])
 y = agg['label']
 
 
@@ -108,7 +108,7 @@ y_minority = y[y == 0]
 y_majority = y[y == 1]
 
 # 2. Test setine azınlık sınıfından sabit sayıda ayır (örnek: 5)
-test_size_min = min(2, len(X_minority))  # Güvenli olması için
+test_size_min = min(15, len(X_minority))  # Güvenli olması için
 X_test_min = X_minority[:test_size_min]
 y_test_min = y_minority[:test_size_min]
 
@@ -135,11 +135,14 @@ weights = dict(zip(np.unique(y_train), class_weights))
 # SMOTE + Tomek Links
 smote = SMOTE(k_neighbors=1, sampling_strategy=0.75, random_state=SEED)
 smt = SMOTETomek(smote=smote, random_state=SEED)
+
+
 X_resampled, y_resampled = smt.fit_resample(X_train, y_train)
+
 
 # Model tanımı (Dropout'lu)
 model = Sequential([
-    Dense(64, activation='relu', input_shape=(X_train.shape[1],)),
+    Dense(64, activation='relu', input_shape=(X_resampled.shape[1],)),
     Dropout(0.3),
     Dense(32, activation='relu'),
     Dropout(0.2),
@@ -154,7 +157,7 @@ early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=
 
 # Model eğitimi
 history = model.fit(
-    X_train, y_train,
+    X_resampled, y_resampled,
     validation_data=(X_test, y_test),
     class_weight=weights,
     epochs=50,
@@ -183,6 +186,28 @@ plt.ylabel('Loss')
 plt.legend()
 plt.grid(True)
 plt.show()
+
+
+# Fazladan 10 adet 0 sınıfı test setine manuel olarak ekleniyor
+additional_zeros_for_test = 10
+X_extra_zeros = X_train_min[:additional_zeros_for_test]  # Daha önce train için ayrılmış azınlık veriden
+y_extra_zeros = y_train_min[:additional_zeros_for_test]
+
+# Extended test set oluştur
+X_test_ext = np.vstack([X_test, X_extra_zeros])
+y_test_ext = pd.concat([y_test, y_extra_zeros])
+
+# Tahmin yap
+y_pred_ext = model.predict(X_test_ext)
+fpr_ext, tpr_ext, thresholds_ext = roc_curve(y_test_ext, y_pred_ext)
+optimal_idx_ext = np.argmax(tpr_ext - fpr_ext)
+optimal_threshold_ext = thresholds_ext[optimal_idx_ext]
+y_pred_labels_ext = (y_pred_ext > optimal_threshold_ext).astype(int)
+
+# Performans değerlendirmesi
+print(f"Extended Test AUC: {roc_auc_score(y_test_ext, y_pred_ext):.4f}")
+print(confusion_matrix(y_test_ext, y_pred_labels_ext))
+print(classification_report(y_test_ext, y_pred_labels_ext))
 
 # Tahmin ve ROC/AUC
 y_pred = model.predict(X_test)
