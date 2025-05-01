@@ -15,32 +15,74 @@ from imblearn.over_sampling import SMOTE
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix, classification_report
 from imblearn.combine import SMOTETomek, SMOTEENN
-from imblearn.ensemble import BalancedRandomForestClassifier
+import random
+import tensorflow as tf
+
+
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
 # 1. Veriyi çek
 df = get_customer_order_data()
 df.head()
 
 # Feature engineering
-# Temel hesaplamalar
 df['order_date'] = pd.to_datetime(df['order_date'])
+# order_date datetime'e çevrili
+df['order_month'] = df['order_date'].dt.month
+df['order_weekday'] = df['order_date'].dt.weekday
+
+# Mevsim çıkarımı
+def get_season(month):
+    if month in [12, 1, 2]:
+        return 'Winter'
+    elif month in [3, 4, 5]:
+        return 'Spring'
+    elif month in [6, 7, 8]:
+        return 'Summer'
+    else:
+        return 'Fall'
+
+df['order_season'] = df['order_month'].apply(get_season)
+
+# Müşterinin ilk sipariş tarihi
+first_order = df.groupby('customer_id')['order_date'].min().reset_index()
+first_order.columns = ['customer_id', 'first_order_date']
+
+# Müşteri ömrü (kaç gün aktif)
+df = df.merge(first_order, on='customer_id')
+df['customer_lifetime'] = (df['order_date'].max() - df['first_order_date']).dt.days
+
+# Siparişler arası ortalama gün farkı (müşteri bazlı)
+df_sorted = df.sort_values(['customer_id', 'order_date'])
+df_sorted['gap_days'] = df_sorted.groupby('customer_id')['order_date'].diff().dt.days
+avg_order_gap = df_sorted.groupby('customer_id')['gap_days'].mean().reset_index()
+avg_order_gap.columns = ['customer_id', 'avg_days_between_orders']
+
+# Ana agg veri seti
 df['total'] = df['unit_price'] * df['quantity']
 
-# Toplam harcama, sipariş sayısı, ortalama büyüklük
 agg = df.groupby('customer_id').agg(
     total_spend=('total', 'sum'),
     order_count=('order_id', 'nunique'),
-    last_order_date=('order_date', 'max')
+    last_order_date=('order_date', 'max'),
+    customer_lifetime=('customer_lifetime', 'max')
 ).reset_index()
 agg['avg_order_size'] = agg['total_spend'] / agg['order_count']
 
-# Etiketleme (Label): Son siparişi en geç ne zamandı?
+# Etiketleme: Son 6 ay içinde sipariş verdiyse 1
 cutoff_date = agg['last_order_date'].max() - pd.DateOffset(months=6)
 agg['label'] = (agg['last_order_date'] > cutoff_date).astype(int)
 
-agg.drop(columns=['last_order_date'], inplace=True)
-agg.head()
+# Ort. gün farkı ekle
+agg = agg.merge(avg_order_gap, on='customer_id', how='left')
 
-X = agg[['total_spend', 'order_count', 'avg_order_size']]
+# Son olarak date kolonunu at
+agg.drop(columns=['last_order_date'], inplace=True)
+
+
+X = agg[['total_spend', 'order_count', 'avg_order_size', 'customer_lifetime', 'avg_days_between_orders']]
 y = agg['label']
 
 #  Verimiz scale edelim
@@ -49,13 +91,44 @@ X_scaled = scaler.fit_transform(X)
 
 joblib.dump(scaler, Config.PROJECT_ROOT / 'src/models/order_habit/preprocessor.pkl')  # preprocessoru kaydet
 
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, stratify=y, test_size=0.2, random_state=42)
+
+from sklearn.model_selection import train_test_split
+
+# 1. Azınlık ve çoğunluk sınıflarını ayır
+X_minority = X_scaled[y == 0]
+X_majority = X_scaled[y == 1]
+y_minority = y[y == 0]
+y_majority = y[y == 1]
+
+# 2. Test setine azınlık sınıfından sabit sayıda ayır (örn: 5)
+test_size_min = 3
+X_test_min = X_minority[:test_size_min]
+y_test_min = y_minority[:test_size_min]
+
+# 3. Geri kalan azınlık verisini train'e bırak
+X_train_min = X_minority[test_size_min:]
+y_train_min = y_minority[test_size_min:]
+
+# 4. Çoğunluk sınıfı için split (örneğin %80/20)
+X_train_maj, X_test_maj, y_train_maj, y_test_maj = train_test_split(
+    X_majority, y_majority, test_size=0.2, random_state=42
+)
+
+# 5. Train ve test kümelerini birleştir
+X_train = np.vstack([X_train_min, X_train_maj])
+y_train = pd.concat([y_train_min, y_train_maj])
+
+X_test = np.vstack([X_test_min, X_test_maj])
+y_test = pd.concat([y_test_min, y_test_maj])
+
+
+# X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, stratify=y, test_size=0.3, random_state=SEED)
 
 # SMOTE parametrelerini özelleştirme
-smote = SMOTE(k_neighbors=1, sampling_strategy=0.5)
+smote = SMOTE(k_neighbors=1, sampling_strategy=0.5, random_state=SEED)
 
 # SMOTETomek'e SMOTE parametrelerini iletme
-smt = SMOTETomek(smote=smote)
+smt = SMOTETomek(smote=smote, random_state=SEED)
 # smote = SMOTE(k_neighbors=1, sampling_strategy=0.5)
 X_resampled, y_resampled = smt.fit_resample(X_train, y_train)
 

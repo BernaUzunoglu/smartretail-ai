@@ -66,7 +66,7 @@ northwind_dl_project/
 │   ├── return_risk/              # 2. model için
 │   └── new_product/             # 3. model için
 │
-├── notebooks/                    # Jupyter notebook'lar
+├── notebooks/                    # Özellik Mühendisliği ve model eğitimi 
 │   ├── 1_order_habit.ipynb       # Veri keşfi ve model eğitimi
 │   ├── 2_return_risk.ipynb       
 │   └── 3_new_product.ipynb      
@@ -84,5 +84,11 @@ northwind_dl_project/
 ├── requirements.txt              # Python bağımlılıkları
 ├── Dockerfile                    # Containerizasyon
 └── README.md                     # Proje dokümantasyonu
+````
+
+## API ÇALIŞTIRMA
+Kök dizizn içerisinde 
+```` bash
+uvicorn src.api.app:app --reload
 ````
 

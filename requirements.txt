@@ -1,3 +1,14 @@
 sqlalchemy
 dotenv
 psycopg2-binary
+pandas
+numpy
+scikit-learn
+seaborn
+matplotlib
+joblib
+tensorflow
+pydantic
+fastapi
+uvicorn
+imbalanced-learn

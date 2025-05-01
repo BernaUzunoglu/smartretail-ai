@@ -15,7 +15,14 @@ from imblearn.over_sampling import SMOTE
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix, classification_report
 from imblearn.combine import SMOTETomek, SMOTEENN
-from imblearn.ensemble import BalancedRandomForestClassifier
+import random
+import tensorflow as tf
+
+
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
 # 1. Veriyi çek
 df = get_customer_order_data()
 df.head()
@@ -35,6 +42,8 @@ agg['avg_order_size'] = agg['total_spend'] / agg['order_count']
 
 # Etiketleme (Label): Son siparişi en geç ne zamandı?
 cutoff_date = agg['last_order_date'].max() - pd.DateOffset(months=6)
+agg['recency_days'] = (cutoff_date - agg['last_order_date']).dt.days
+
 agg['label'] = (agg['last_order_date'] > cutoff_date).astype(int)
 
 agg.drop(columns=['last_order_date'], inplace=True)
@@ -49,13 +58,13 @@ X_scaled = scaler.fit_transform(X)
 
 joblib.dump(scaler, Config.PROJECT_ROOT / 'src/models/order_habit/preprocessor.pkl')  # preprocessoru kaydet
 
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, stratify=y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, stratify=y, test_size=0.2, random_state=SEED)
 
 # SMOTE parametrelerini özelleştirme
-smote = SMOTE(k_neighbors=1, sampling_strategy=0.5)
+smote = SMOTE(k_neighbors=1, sampling_strategy=0.5, random_state=SEED)
 
 # SMOTETomek'e SMOTE parametrelerini iletme
-smt = SMOTETomek(smote=smote)
+smt = SMOTETomek(smote=smote, random_state=SEED)
 # smote = SMOTE(k_neighbors=1, sampling_strategy=0.5)
 X_resampled, y_resampled = smt.fit_resample(X_train, y_train)
 
