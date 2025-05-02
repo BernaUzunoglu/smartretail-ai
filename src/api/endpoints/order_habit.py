@@ -5,11 +5,16 @@ from src.services.order_habit_service import OrderHabitService
 
 router = APIRouter()
 
-@router.post("/predict-order-habit")
-def predict_order_habit(data: OrderHabitRequest):
+@router.get("/predict-order-habit-by-id/{customer_id}")
+def predict_order_habit_by_id(customer_id: str):
     service = OrderHabitService()
-    result = service.predict(data.dict())
-    return {
-        "prediction_probability": result,
-        "will_reorder": result >= 0.5
-    }
+    try:
+        result = service.predict_by_customer_id(customer_id)
+        return result
+    except ValueError as ve:
+        return {"error": str(ve)}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()  # terminalde detaylı hata gösterimi
+        return {"error": "Beklenmeyen bir hata oluştu."}
+

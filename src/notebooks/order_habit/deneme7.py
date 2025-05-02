@@ -108,7 +108,7 @@ y_minority = y[y == 0]
 y_majority = y[y == 1]
 
 # 2. Test setine azınlık sınıfından sabit sayıda ayır (örnek: 5)
-test_size_min = min(15, len(X_minority))  # Güvenli olması için
+test_size_min = min(3, len(X_minority))  # Güvenli olması için
 X_test_min = X_minority[:test_size_min]
 y_test_min = y_minority[:test_size_min]
 

@@ -52,36 +52,64 @@ POST /api/prediction/order-return-probability
 
 ---
 
-## 2. ⚠️ Ürün İade Risk Skoru
+## # ⚠️ Ürün İade Risk Skoru
 
-### 📌 Problem:
-Bir siparişin iade edilme riskini tahmin et.
-Müşterilerin daha önceki siparişlerindeki indirim oranı, ürün miktarı ve harcama miktarına göre bir siparişin iade edilme riskini tahmin eden bir derin öğrenme modeli oluştur.
+## 📌 Problem Tanımı  
+Bir siparişin iade edilme riskini tahmin et.  
+Müşterilerin daha önceki siparişlerindeki **indirim oranı**, **ürün miktarı** ve **harcama miktarına** göre bir siparişin iade edilme riskini tahmin eden bir **derin öğrenme modeli** oluştur.
 
-### 🗂️ Kullanılan Tablolar:
+---
+
+## 🗂️ Kullanılan Veri Tabloları  
 - `Order_Details`
 
-### 📊 Özellikler (Features):
-- `discount_rate`
-- `unit_price`
-- `quantity`
-- `total_spend = unit_price * quantity * (1 - discount_rate)`
-- Etiketleme: Eğer yüksek indirim + düşük harcama → “iade riski yüksek” kabul et.
+---
 
-### 🔬 Ar-Ge Konuları:
-- **Cost-sensitive Learning:** `class_weight` = iade edilenlerin kaybı daha yüksek ,  İade edilen ürünlerin firmaya maliyeti daha yüksek. Modeli bu durumu daha ciddiye alacak şekilde ağırlıklandır.
-- **Explainable AI:** SHAP ile karar açıklamaları , SHAP veya LIME gibi yöntemlerle "Model neden bu siparişi riskli buldu?" açıklamasını çıkar.
+## 📊 Özellikler (Features)
 
-### 🧠 Model:
-- Giriş: `[discount, quantity, total_spend]`
-- Çıkış: `[risk_score: 0-1]`
+| Özellik         | Açıklama                                             |
+|------------------|------------------------------------------------------|
+| `discount_rate`  | Siparişte uygulanan indirim oranı (0-1 arası)       |
+| `unit_price`     | Ürünün birim fiyatı                                 |
+| `quantity`       | Siparişteki ürün adedi                              |
+| `total_spend`    | Toplam harcama = `unit_price * quantity * (1 - discount_rate)` |
 
-### 🛠️ API Endpoint:
+📌 **Etiketleme (Labeling):**  
+- **Yüksek indirim** + **düşük harcama** → “İade riski yüksek” kabul edilir.
+
+---
+
+## 🔬 Ar-Ge Konuları  
+
+### ✅ Cost-sensitive Learning
+- `class_weight`: **İade edilen ürünlerin maliyeti daha yüksek** olduğundan, model bu sınıfı daha ciddi şekilde değerlendirmeli.
+- **Amaç:** İade edilen ürünlere yanlış tahmin yapmanın cezasını artırmak.
+
+### ✅ Explainable AI
+- **SHAP / LIME** gibi açıklanabilir yapay zeka yöntemleri kullanılacak.
+- **Amaç:** "Model neden bu siparişi riskli buldu?" sorusuna yanıt vermek.
+
+---
+
+## 🧠 Model Özeti  
+
+- **Girdi (Input):**
+  - `discount`
+  - `quantity`
+  - `total_spend`
+
+- **Çıktı (Output):**
+  - `risk_score` (0 ile 1 arasında iade riski)
+
+---
+
+## 🛠️ API Endpoint  
+
 ```http
 POST /api/prediction/return-risk
-```
+````
 
-#### 🧾 Örnek Gönderi:
+# Örnek Gönderi (Request Body)
 ```json
 {
   "orderId": 10248,
@@ -89,14 +117,14 @@ POST /api/prediction/return-risk
   "quantity": 5,
   "unitPrice": 20
 }
-```
-
-#### ✅ Örnek Yanıt:
+````
+# Örnek Yanıt (Response)
 ```json
 {
   "returnRiskScore": 0.83,
   "explanation": "High discount with low total spend indicates likely return."
 }
+
 ```
 
 ---
