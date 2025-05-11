@@ -42,49 +42,67 @@
 
 ---
 
-## Proje Yapısı
-````bash
-northwind_dl_project/
-│
-├── api/                          # API katmanı
-│   ├── app.py                    # FastAPI ana uygulama
-│   ├── endpoints/                # API endpoint'leri
-│   │   ├── order_habit.py        # Sipariş alışkanlığı tahmini
-│   │   ├── return_risk.py        # İade risk skoru
-│   │   └── new_product.py        # Yeni ürün satın alma potansiyeli
-│   └── schemas.py                # Pydantic şemaları
-│
-├── core/                         # Çekirdek iş mantığı
-│   ├── config.py                 # Proje konfigürasyonu
-│   ├── database.py               # DB bağlantı ve sorgular
-│   └── utils.py                  # Yardımcı fonksiyonlar
-│
-├── models/                       # Eğitilmiş modeller ve pipeline'lar
-│   ├── order_habit/              # 1. model için
-│   │   ├── model.h5             
-│   │   └── preprocessor.pkl      
-│   ├── return_risk/              # 2. model için
-│   └── new_product/             # 3. model için
-│
-├── notebooks/                    # Özellik Mühendisliği ve model eğitimi 
-│   ├── 1_order_habit.ipynb       # Veri keşfi ve model eğitimi
-│   ├── 2_return_risk.ipynb       
-│   └── 3_new_product.ipynb      
-│
-├── services/                     # İş servisleri
-│   ├── prediction_service.py     # Tahmin servisi temel sınıfı
-│   ├── order_service.py          # 1. model servisi
-│   ├── return_service.py         # 2. model servisi
-│   └── product_service.py        # 3. model servisi
-│
-├── tests/                        # Testler
-│   ├── unit/                     # Unit testler
-│   └── integration/              # Entegrasyon testleri
-│
-├── requirements.txt              # Python bağımlılıkları
-├── Dockerfile                    # Containerizasyon
-└── README.md                     # Proje dokümantasyonu
-````
+## 📁 Proje Yapısı ve Mimarisi
+
+Bu proje, modüler, ölçeklenebilir ve üretime uygun bir makine öğrenimi tabanlı mikroservis mimarisi üzerine inşa edilmiştir. Aşağıdaki klasör yapısı, her bileşenin görevine göre ayrıldığı, sürdürülebilir ve geliştirilebilir bir yapı sunmaktadır:
+
+### 🔹 `docs/`
+Projeye ait teknik dökümantasyon ve Ar-Ge notlarını içerir.
+- `Project_Documentation.md`: Proje genel tanımı, kullanım senaryoları, mimari yapı ve metodolojik açıklamaları içerir.
+- `Order_Habit_Arge.md`: Sipariş alışkanlığı tahminiyle ilgili yapılan araştırmaları ve deneysel analizleri içerir.
+
+### 🔹 `src/`
+Uygulamanın çekirdek kaynak kodlarını barındırır.
+- `api/`: FastAPI tabanlı REST API yapısı.  
+  - `app.py`: Uygulamanın ana giriş noktası.  
+  - `endpoints/`: Tahmin servisleri için endpoint tanımları.  
+  - `schemas.py`: Girdi/çıktı veri modelleri (Pydantic ile).
+
+- `core/`: Genel yapılandırma ve yardımcı araçlar.  
+  - `config.py`: Ortam ayarları, model yolları ve diğer sabit tanımlar.  
+  - `utils.py`: Sık kullanılan yardımcı fonksiyonlar.
+
+- `data/`: Veritabanı bağlantıları ve veri toplama scriptleri.  
+  - `database.py`: ORM yapılandırmaları ve bağlantı yönetimi.  
+  - `fetch_customer_order_summary.py`, `fetch_orders.py`: Veri çekme scriptleri.  
+  - `product_purchase_data.py`: Ürün satın alma potansiyeli verilerinin hazırlanması.
+
+- `models/`: Tahmin modellerinin ve eğitim süreçlerinin bulunduğu klasör.  
+  - `order_habit/`: Sipariş alışkanlığı tahmin modeli.  
+  - `product_purchase_potential/`: Ürün satın alma potansiyeli tahmin modeli.  
+  - `return_risk/`: Ürün iade riski tahmin modeli.
+
+### 🔹 `notebooks/`
+Model geliştirme sürecinde kullanılan Jupyter Notebook’ları içerir.
+- `order_habit/`: Sipariş alışkanlığı tahmini adımlarını içeren notebook'lar.  
+- `new_product/`: Yeni ürünler için satın alma potansiyeli analizleri.  
+- `product_return_risk/`: İade riski tahminine dair SMOTE ve modelleme çalışmaları.
+
+### 🔹 `services/`
+Eğitilen modellerin servisleştirilerek dış dünyaya sunulmasını sağlar.
+- `order_habit_service.py`: Sipariş alışkanlığı modeli servisi.  
+- `product_purchase_service.py`: Ürün satın alma modeli servisi.  
+- `return_risk_service.py`: İade riski modeli servisi.
+
+### 🔹 Diğer Ana Dosyalar
+- `run.py`: FastAPI uygulamasını başlatan çalıştırıcı dosya.  
+- `.env` / `.env.example`: Ortam değişkenleri için yapılandırma dosyaları.  
+- `.gitignore`: Versiyon kontrolüne dahil edilmeyecek dosyalar.  
+- `requirements.txt`: Projede kullanılan tüm Python bağımlılıkları.  
+- `README.md`: Projenin tanıtım ve kurulum kılavuzu.
+
+---
+
+Bu yapı sayesinde:
+
+- ✅ **Yeniden Kullanılabilirlik:** Her bileşen tek sorumluluk prensibine göre düzenlenmiştir.  
+- 🔧 **Bakım Kolaylığı:** Modüler yapı sayesinde hata ayıklama ve güncelleme işlemleri izole biçimde yapılabilir.  
+- 🚀 **Genişletilebilirlik:** Yeni modeller, servisler veya API uçları kolayca eklenebilir.  
+- 🏗 **Üretime Uygunluk:** API ve servis yapısı, CI/CD süreçlerine kolay entegrasyon sağlar.
+
+📌 **Detaylı proje yapısı için:**  
+👉 [docs/Project_Structure.md](https://github.com/BernaUzunoglu/smartretail-ai/blob/main/docs/Project_Structure.md)
+
 
 ## API ÇALIŞTIRMA
 Kök dizizn içerisinde 

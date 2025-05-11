@@ -137,23 +137,7 @@ Her model ayrı bir REST API servisi olarak sunulmuştur:
 
 ## 📁 Proje Yapısı
 
-```
-project-root/
-├── data/
-│   └── northwind.sqlite
-├── notebooks/
-│   ├── 1_order_prediction.ipynb
-│   ├── 2_return_risk.ipynb
-│   └── 3_product_recommendation.ipynb
-├── models/
-│   ├── order_model.h5
-│   ├── return_model.h5
-│   └── recommend_model.h5
-├── api/
-│   └── main.py
-├── requirements.txt
-└── README.md
-```
+
 
 ---
 

@@ -136,7 +136,7 @@ history = model.fit(
     batch_size=32,
     epochs=100,
     class_weight=weights,
-    callbacks=[early_stop],
+    # callbacks=[early_stop],
     verbose=1
 )
 
